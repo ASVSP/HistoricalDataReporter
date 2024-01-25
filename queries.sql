@@ -121,7 +121,7 @@ WITH GasEmissionRank AS (
         gas_name,
         country_name,
         year,
-        round(total_gas_emission, 2)
+        round(total_gas_emission, 2) as total_emission
     FROM
         GasEmissionRank
     WHERE
@@ -159,7 +159,7 @@ WITH ranked_emitters AS (
     ORDER BY year;
 
 -- 9. Pregled promene proseka svakog tipa gasa na 3 meseca u Severnoj Americi 2021. godine
-SELECT c.name as country, y.value as year, m.name as month, g.name as gas,
+SELECT c.name as country, y.value as year, m.num_value as month, g.name as gas,
        AVG(ge.quantity) OVER (PARTITION BY ge.country_code,ge.gas_id ORDER BY y.value, m.num_value ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) AS moving_avg
 FROM gas_emission ge
 JOIN month m ON ge.month_id = m.id
@@ -168,7 +168,7 @@ JOIN country c ON ge.country_code = c.code
 JOIN region r ON c.region_code=r.code
 JOIN gas g ON g.id=ge.gas_id
 WHERE r.name = 'Northern America' and y.value = 2021
-ORDER BY country, year, month, gas;
+ORDER BY year, month, country, gas;
 
 -- 10. Ispisi u opadajucem redosledu kontinente od onih sa najvecom povecanom razlikom emisije gasa, ka onima sa najmanjom
 -- povecanom emisijom
