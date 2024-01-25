@@ -1,0 +1,176 @@
+version: "3"
+
+networks:
+  airflow_network:
+    name: airflow_network
+    external: true
+  superset_network:
+    name: superset_network
+    external: true
+
+services:
+
+  namenode:
+    #    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    build: ./namenode
+    container_name: namenode
+    ports:
+      - "9870:9870"
+      - "9000:9000"
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+      - ./data:/asvsp/data
+    environment:
+      - CLUSTER_NAME=asvsp
+    env_file:
+      - ./hadoop.env
+    networks:
+      - airflow_network
+
+  datanode1:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode1
+    volumes:
+      - hadoop_datanode1:/hadoop/dfs/data
+    env_file:
+      - ./hadoop.env
+    depends_on:
+      - namenode
+    networks:
+      - airflow_network
+
+  datanode2:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode2
+    volumes:
+      - hadoop_datanode2:/hadoop/dfs/data
+    env_file:
+      - ./hadoop.env
+    depends_on:
+      - namenode
+    networks:
+      - airflow_network
+
+  spark-master:
+    build: ./spark-master
+    container_name: spark-master
+    ports:
+      - 8080:8080
+      - 7077:7077
+    environment:
+      - PYSPARK_PYTHON=python3
+      - PYSPARK_DRIVER_PYTHON=python3
+    env_file:
+      - ./hadoop.env
+    volumes:
+      - ./scripts:/asvsp/scripts
+    networks:
+      - airflow_network
+
+  spark-worker1:
+    image: bde2020/spark-worker:3.0.1-hadoop3.2
+    container_name: spark-worker1
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+    ports:
+      - 8081:8081
+    env_file:
+      - ./hadoop.env
+    networks:
+      - airflow_network
+
+  spark-worker2:
+    image: bde2020/spark-worker:3.0.1-hadoop3.2
+    container_name: spark-worker2
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+    ports:
+      - 8082:8081
+    env_file:
+      - ./hadoop.env
+    networks:
+      - airflow_network
+
+  hive-server:
+    #    image: bde2020/hive:2.3.2-postgresql-metastore
+    build: ./hive-server
+    container_name: hive-server
+    env_file:
+      - ./hadoop.env
+    environment:
+      HIVE_CORE_CONF_javax_jdo_option_ConnectionURL: "jdbc:postgresql://hive-metastore/metastore"
+      SERVICE_PRECONDITION: "hive-metastore:9083"
+    ports:
+      - "10000:10000"
+    volumes:
+      - ./dw-script:/opt/hive/scripts/asvsp
+    networks:
+      - airflow_network
+      - superset_network
+
+  hive-metastore:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    container_name: hive-metastore
+    env_file:
+      - ./hadoop.env
+    command: /opt/hive/bin/hive --service metastore
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870 datanode1:9864 datanode2:9864 hive-metastore-postgresql:5432"
+    ports:
+      - "9083:9083"
+    networks:
+      - airflow_network
+
+  hive-metastore-postgresql:
+    image: bde2020/hive-metastore-postgresql:2.3.0
+    container_name: hive-metastore-postgresql
+    networks:
+      - airflow_network
+
+  hue:
+    image: gethue/hue:20201111-135001
+    # hostname: hue
+    container_name: hue
+    dns: 8.8.8.8
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./conf.dist:/usr/share/hue/desktop/conf
+    depends_on:
+      - namenode
+    networks:
+      - airflow_network
+
+  superset:
+    image: apache/superset
+    container_name: superset
+    env_file:
+      - ./hadoop.env
+    ports:
+      - 8088:8088
+    volumes:
+      - superset:/app
+    depends_on:
+      - hive-server
+    command: >
+      sh -c "superset fab create-admin --username admin --firstname Superset --lastname Admin --email admin@superset.com --password admin && superset db upgrade && superset init && superset run -p 8088 -h 0.0.0.0"
+    networks:
+      - airflow_network
+  # superset-create-dashboard:
+  #   build: ./superset_dashboard
+  #   container_name: superset-create-dashboard
+  #   depends_on:
+  #     superset:
+  #       condition: service_started
+  #   volumes:
+  #     - ./superset_dashboard/scripts:/scripts
+
+volumes:
+  hadoop_namenode:
+  hadoop_datanode1:
+  hadoop_datanode2:
+  superset:

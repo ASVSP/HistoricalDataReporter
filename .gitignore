@@ -1,0 +1,12 @@
+# Airflow logs
+/af/logs
+
+# IDEA file
+.idea
+
+# Ignore raw data
+/data/cropland-fires
+
+# Radnom files
+/random
+/superset
